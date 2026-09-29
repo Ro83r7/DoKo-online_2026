@@ -32,7 +32,7 @@ Alle Regeln lassen sich unter „Regeln & Optionen“ umschalten.
 
 1. Im Repo auf **Settings → Pages** gehen
 2. Bei *Build and deployment* Folgendes wählen: **Source: Deploy from a branch**, **Branch: `main` / `(root)`** → Save
-3. Nach etwa einer Minute läuft das Spiel unter `https://<dein-github-name>.github.io/DoKo-Online_2026/`
+3. Nach etwa einer Minute läuft das Spiel unter **https://ro83r7.github.io/DoKo-online_2026/**
 
 ## Online mit Freunden
 
