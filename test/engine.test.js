@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
-  makeDeck, eyesOf, seededRng, trumpRank, winningIndex, legalCards, scoreGame, mergeRules,
+  makeDeck, eyesOf, seededRng, shuffle, trumpRank, winningIndex, legalCards, scoreGame, mergeRules,
   createGame, applyAction, Table, getGameView,
 } from '../js/engine/index.js';
 
@@ -134,49 +134,96 @@ test('Durchlaufendes Herz löst Bock aus', () => {
 
 // ---------- Spielablauf ----------
 
-function handsWithHochzeit() {
-  const d = makeDeck().filter((c) => !c.startsWith('CQ'));
-  return [
-    d.slice(0, 10),
-    ['CQ0', 'CQ1', ...d.slice(10, 18)],
-    d.slice(18, 28),
-    d.slice(28, 38),
-  ];
+function handsWithHochzeit(rng) {
+  const rest = shuffle(makeDeck().filter((c) => !c.startsWith('CQ')), rng);
+  return [rest.slice(0, 10), ['CQ0', 'CQ1', ...rest.slice(10, 18)], rest.slice(18, 28), rest.slice(28, 38)];
 }
 
-test('Hochzeit (Auszahlung): +3 für den Hochzeiter, je −1 für die anderen', () => {
-  const g = createGame({ rules, dealer: 0, hands: handsWithHochzeit() });
-  assert.ok(applyAction(g, 1, { type: 'declare', choice: 'hochzeit' }).ok);
-  for (const s of [2, 3, 0]) assert.ok(applyAction(g, s, { type: 'declare', choice: 'gesund' }).ok);
-  assert.equal(g.phase, 'finished');
-  assert.deepEqual(g.result.perSeat, [-1, 3, -1, -1]);
-});
-
-test('Hochzeit (klassisch): erster fremder Stich bestimmt den Partner', () => {
-  const g = createGame({ rules: mergeRules({ hochzeitMode: 'play' }), dealer: 0, hands: handsWithHochzeit() });
-  applyAction(g, 1, { type: 'declare', choice: 'hochzeit' });
-  for (const s of [2, 3, 0]) applyAction(g, s, { type: 'declare', choice: 'gesund' });
-  assert.equal(g.phase, 'playing');
-  let guard = 0;
-  while (!g.contract.clarified && guard++ < 20) {
-    const seat = g.turn;
-    const v = getGameView(g, seat);
-    applyAction(g, seat, { type: 'play', card: v.legal[0] });
+function playRandom(g, rng, until = () => false) {
+  while (g.phase === 'playing' && !until()) {
+    const v = getGameView(g, g.turn);
+    assert.ok(applyAction(g, g.turn, { type: 'play', card: v.legal[Math.floor(rng() * v.legal.length)] }).ok);
   }
-  assert.ok(g.contract.clarified);
-  const reCount = g.parties.filter((p) => p === 're').length;
-  assert.ok(reCount === 1 || reCount === 2);
+}
+
+test('Hochzeit: Ansage „erster Fehlstich“ / „erster Trumpfstich“, sonst allein', () => {
+  const rng = seededRng(11);
+  const seen = { partner: 0, alone: 0, T: 0, F: 0 };
+  for (let n = 0; n < 400; n++) {
+    const mode = n % 2 ? 'T' : 'F';
+    const g = createGame({ rules, dealer: 0, hands: handsWithHochzeit(rng) });
+    const v = getGameView(g, 1);
+    assert.ok(v.options.includes('hochzeit-F') && v.options.includes('hochzeit-T'));
+    assert.ok(applyAction(g, 1, { type: 'declare', choice: `hochzeit-${mode}` }).ok);
+    for (const s of [2, 3, 0]) applyAction(g, s, { type: 'declare', choice: 'gesund' });
+    assert.equal(g.phase, 'playing');
+    // Vor der Klärung darf niemand ansagen
+    for (let s = 0; s < 4; s++) assert.equal(getGameView(g, s).nextAnn, null);
+    playRandom(g, rng);
+    const ctx = { contract: 'normal', schweine: g.schweine !== null, secondDulleBeats: true };
+    const first = g.tricks.slice(0, 3).find((t) => {
+      const isT = trumpRank(t.cards[0].card, ctx) >= 0;
+      return (mode === 'T' ? isT : !isT) && t.winner !== 1;
+    });
+    const r = g.result;
+    if (first) {
+      seen.partner++;
+      seen[mode]++;
+      assert.deepEqual(r.reSeats.sort(), [1, first.winner].sort());
+      assert.equal(r.solo, false);
+    } else {
+      seen.alone++;
+      assert.deepEqual(r.reSeats, [1]);
+      assert.equal(r.solo, true);
+      assert.equal(r.perSeat[1], -3 * r.perSeat[0]);
+    }
+    assert.equal(r.perSeat.reduce((x, y) => x + y, 0), 0);
+  }
+  assert.ok(seen.partner > 0 && seen.alone > 0 && seen.T > 0 && seen.F > 0, JSON.stringify(seen));
 });
 
-test('Ansage-Fristen: Re nur bis zur 2. Karte', () => {
-  const g = createGame({ rules, dealer: 3, rng: seededRng(5) });
+function gameAfterTricks(r, n) {
+  const g = createGame({ rules: mergeRules(r), dealer: 3, rng: seededRng(5) });
   for (const s of [0, 1, 2, 3]) applyAction(g, s, { type: 'declare', choice: 'gesund' });
-  // Zwei Stiche spielen
-  for (let i = 0; i < 8; i++) {
+  if (g.contract.silentSolo !== undefined) return null;
+  for (let i = 0; i < n * 4; i++) {
     const v = getGameView(g, g.turn);
     applyAction(g, g.turn, { type: 'play', card: v.legal[0] });
   }
+  return g;
+}
+
+test('Ansage-Fristen: Re/Kontra bis die 5. Karte liegt', () => {
+  // Nach 4 Stichen (6 Karten auf der Hand) geht Re/Kontra noch
+  let g = gameAfterTricks({}, 4);
+  for (let s = 0; s < 4; s++) assert.equal(getGameView(g, s).nextAnn.level, 1);
+  // Nach 5 Stichen (5. Karte liegt) nicht mehr
+  g = gameAfterTricks({}, 5);
   for (let s = 0; s < 4; s++) assert.equal(applyAction(g, s, { type: 'announce' }).ok, false);
+  // Absage keine 90 noch bis die 6. Karte liegt
+  g = gameAfterTricks({}, 4);
+  const s0 = g.turn;
+  assert.ok(applyAction(g, s0, { type: 'announce' }).ok);
+  const v = getGameView(g, g.turn);
+  applyAction(g, g.turn, { type: 'play', card: v.legal[0] });
+  for (let i = 0; i < 3; i++) { const w = getGameView(g, g.turn); applyAction(g, g.turn, { type: 'play', card: w.legal[0] }); }
+  assert.equal(getGameView(g, s0).nextAnn.level, 2);
+});
+
+test('Ansage-Fristen: DKV-Einstellung (bis zur 2. Karte)', () => {
+  const g = gameAfterTricks({ announceUntil: 2 }, 2);
+  for (let s = 0; s < 4; s++) assert.equal(applyAction(g, s, { type: 'announce' }).ok, false);
+});
+
+test('Standardregeln: Fuchs gefangen und Doppelkopf zählen', () => {
+  assert.equal(rules.fuchsGefangen, true);
+  assert.equal(rules.doppelkopf, true);
+  const g = fakeGame({ reEyes: 130 });
+  g.tricks[0] = { winner: 2, eyes: 42, cards: [{ seat: 0, card: 'DA0' }, { seat: 1, card: 'H100' }, { seat: 2, card: 'H101' }, { seat: 3, card: 'DK0' }] };
+  // Augen wieder auf 240 bringen ist hier egal – geprüft werden nur die Sonderpunkte
+  const res = scoreGame(g);
+  assert.ok(res.special.some((x) => x.label === 'Doppelkopf' && x.party === 'kontra'));
+  assert.ok(res.special.some((x) => x.label === 'Fuchs gefangen' && x.party === 'kontra'));
 });
 
 test('Bock: Auslöser → nächste 4 Spiele doppelt', () => {
@@ -191,7 +238,7 @@ test('Bock: Auslöser → nächste 4 Spiele doppelt', () => {
 });
 
 test('Simulation: 3000 Bot-Spiele laufen fehlerfrei und nullsummig', () => {
-  for (const r of [{}, { hochzeitMode: 'play', fuchsGefangen: true, doppelkopf: true }]) {
+  for (const r of [{}, { fuchsGefangen: false, doppelkopf: false, announceUntil: 2 }]) {
     const t = new Table({ players: [0, 1, 2, 3].map((i) => ({ name: `B${i}`, kind: 'bot' })), rules: r, schedule: null, rng: seededRng(42) });
     let steps = 0;
     const seenContracts = new Set();

@@ -1,6 +1,6 @@
 // Einfache, aber solide Heuristik-KI. Sie sieht NUR, was auch ein Mensch am Platz sehen würde (getGameView).
 import { suitOf, rankOf, eyesOf, isFox, isClubQueen, isDulle } from './cards.js';
-import { trumpRank, winningIndex, cardClass, CONTRACTS, SOLO_TYPES, legalCards } from './rules.js';
+import { trumpRank, winningIndex, cardClass, CONTRACTS, SOLO_TYPES, legalCards, power } from './rules.js';
 
 // ---------- Handbewertung ----------
 
@@ -34,8 +34,13 @@ function handStrength(hand, ctx) {
 export function botDeclare(view) {
   const hand = view.hand;
   const opts = view.options;
-  if (opts.includes('hochzeit')) return 'hochzeit';
-  if (!view.rules.solosAllowed) return 'gesund';
+  const hochzeit = () => {
+    // Mit Fehlkarten zum Abgeben → erster Fehlstich, sonst erster Trumpfstich
+    const nctx = { contract: 'normal', schweine: false, secondDulleBeats: true };
+    const fehl = hand.filter((c) => trumpRank(c, nctx) < 0 && rankOf(c) !== 'A').length;
+    return fehl >= 2 ? 'hochzeit-F' : 'hochzeit-T';
+  };
+  if (!view.rules.solosAllowed) return opts.includes('hochzeit-F') ? hochzeit() : 'gesund';
   const candidates = [];
   const ctxFor = (type) => ({ contract: type, schweine: false, secondDulleBeats: view.rules.secondDulleBeats });
   for (const type of SOLO_TYPES) {
@@ -54,7 +59,7 @@ export function botDeclare(view) {
       if (trumps >= 8 && s >= 20) candidates.push({ type, score: s / 2 });
     }
   }
-  if (!candidates.length) return 'gesund';
+  if (!candidates.length) return opts.includes('hochzeit-F') ? hochzeit() : 'gesund';
   candidates.sort((a, b) => b.score - a.score);
   return candidates[0].type;
 }
@@ -101,8 +106,31 @@ export function botPlay(view) {
   const me = view.seat;
   const my = kp[me];
   const trick = view.trick.cards;
+  const c = view.contract;
+  if (c && c.hochzeit !== undefined && !c.clarified) {
+    const h = hochzeitPlay(view, legal, ctx, trick);
+    if (h) return h;
+  }
   if (!trick.length) return lead(view, legal, ctx, kp);
   return follow(view, legal, ctx, kp, my, trick);
+}
+
+/** Hochzeit vor der Klärung: Hochzeiter spielt die angesagte Stichart klein an, die anderen wollen sie gewinnen. */
+function hochzeitPlay(view, legal, ctx, trick) {
+  const c = view.contract;
+  const isT = (id) => trumpRank(id, ctx) >= 0;
+  const wantT = c.hochzeitMode === 'T';
+  if (view.seat === c.hochzeit) {
+    if (!trick.length) {
+      const fitting = legal.filter((id) => isT(id) === wantT && !isFox(id));
+      if (fitting.length) return fitting.sort((a, b) => power(a, ctx) - power(b, ctx))[0];
+      return null;
+    }
+    const leadT = isT(trick[0].card);
+    if (leadT === wantT) return lowest(legal, ctx); // Stich den anderen überlassen
+    return null;
+  }
+  return null;
 }
 
 const pts = (cards) => cards.reduce((s, c) => s + eyesOf(c.card), 0);

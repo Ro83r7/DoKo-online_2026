@@ -11,7 +11,8 @@ export const annLabel = (party, lvl) => (lvl === 1 ? (party === 're' ? 'Re' : 'K
 
 export const DECLARATION_LABELS = {
   gesund: 'Gesund',
-  hochzeit: 'Hochzeit',
+  'hochzeit-F': 'Hochzeit (erster Fehlstich)',
+  'hochzeit-T': 'Hochzeit (erster Trumpfstich)',
   ...Object.fromEntries(SOLO_TYPES.map((t) => [t, CONTRACTS[t].label])),
 };
 
@@ -65,7 +66,7 @@ export function actorOf(g) {
 export function availableDeclarations(g, seat) {
   const out = ['gesund'];
   const qs = g.hands[seat].filter(isClubQueen).length;
-  if (qs === 2) out.push('hochzeit');
+  if (qs === 2) out.push('hochzeit-F', 'hochzeit-T');
   if (g.rules.solosAllowed) out.push(...SOLO_TYPES);
   return out;
 }
@@ -112,7 +113,7 @@ function resolveVorbehalt(g) {
   const decl = g.vorbehalt.declarations;
   g.vorbehalt.turn = null;
   const soloSeat = order.find((s) => decl[s].startsWith('solo-'));
-  const hochSeat = order.find((s) => decl[s] === 'hochzeit');
+  const hochSeat = order.find((s) => decl[s].startsWith('hochzeit'));
   let leader = next(g.dealer);
 
   if (soloSeat !== undefined) {
@@ -122,19 +123,12 @@ function resolveVorbehalt(g) {
     if (g.rules.soloistLeads) leader = soloSeat;
     pushEvent(g, { type: 'contract', contract: g.contract.type, seat: soloSeat });
   } else if (hochSeat !== undefined) {
-    if (g.rules.hochzeitMode === 'payout') {
-      g.contract = { type: 'normal', hochzeit: hochSeat, payout: true };
-      g.phase = 'finished';
-      const bonus = g.rules.hochzeitBonus;
-      const perSeat = [0, 1, 2, 3].map((s) => (s === hochSeat ? bonus : -bonus / 3));
-      g.result = { kind: 'hochzeit', seat: hochSeat, perSeat, triggers: [] };
-      pushEvent(g, { type: 'contract', contract: 'hochzeit', seat: hochSeat });
-      return;
-    }
-    g.contract = { type: 'normal', hochzeit: hochSeat, clarified: false, clarifyTricks: 0 };
+    // Klärung durch den ersten Fehl- bzw. Trumpfstich innerhalb der ersten 3 Stiche
+    const mode = decl[hochSeat] === 'hochzeit-T' ? 'T' : 'F';
+    g.contract = { type: 'normal', hochzeit: hochSeat, hochzeitMode: mode, clarified: false, clarifyTricks: 0 };
     for (let s = 0; s < 4; s++) g.parties[s] = s === hochSeat ? 're' : 'kontra';
     g.revealed[hochSeat] = 're';
-    pushEvent(g, { type: 'contract', contract: 'hochzeit', seat: hochSeat });
+    pushEvent(g, { type: 'contract', contract: 'hochzeit', seat: hochSeat, mode });
   } else {
     g.contract = { type: 'normal' };
     for (let s = 0; s < 4; s++) g.parties[s] = g.hands[s].some(isClubQueen) ? 're' : 'kontra';
@@ -171,7 +165,8 @@ export function nextAnnouncement(g, seat) {
   const want = lvl + 1;
   if (want > 5) return null;
   const offset = c.hochzeit !== undefined ? c.clarifyTricks : 0;
-  let minCards = 10 - want - offset;
+  // Re/Kontra bis die `announceUntil`-te eigene Karte liegt, jede Absage eine Karte später
+  let minCards = 12 - g.rules.announceUntil - want - offset;
   if (want === 1 && g.ann[opp] >= 1) minCards -= 1; // Erwiderung einen Stich später erlaubt
   return g.hands[seat].length >= minCards ? want : null;
 }
@@ -236,7 +231,9 @@ function play(g, seat, card) {
 
   const c = g.contract;
   if (c.hochzeit !== undefined && !c.clarified) {
-    if (winner !== c.hochzeit) {
+    const lead = cardClass(done.cards[0].card, ctx);
+    const counts = c.hochzeitMode === 'T' ? lead === 'T' : lead !== 'T';
+    if (counts && winner !== c.hochzeit) {
       g.parties[winner] = 're';
       c.clarified = true;
       c.partner = winner;
@@ -330,6 +327,7 @@ function publicContract(g) {
   if (c.hochzeit !== undefined) {
     out.hochzeit = c.hochzeit;
     out.clarified = !!c.clarified;
+    out.hochzeitMode = c.hochzeitMode;
     out.label = 'Hochzeit';
     if (c.clarified) out.partner = c.partner ?? null;
   }

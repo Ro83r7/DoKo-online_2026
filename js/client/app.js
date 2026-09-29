@@ -21,6 +21,13 @@ const prefs = Object.assign({
   rules: { ...DEFAULT_RULES },
   serverUrl: defaultServerUrl(),
 }, load('doko.prefs', {}));
+// Regelstand 2: Hochzeit ausspielen, Fuchs + Doppelkopf an, Re/Kontra bis zur 5. Karte
+const RULES_VERSION = 2;
+if (prefs.rulesVersion !== RULES_VERSION) {
+  prefs.rules = { ...DEFAULT_RULES };
+  prefs.rulesVersion = RULES_VERSION;
+  save('doko.prefs', prefs);
+}
 prefs.rules = mergeRules(prefs.rules);
 
 const S = {
@@ -78,7 +85,8 @@ function renderHome() {
   if (r.karlchen) chips.push('Karlchen');
   if (r.fuchsGefangen) chips.push('Fuchs gefangen');
   if (r.doppelkopf) chips.push('Doppelkopf');
-  chips.push(r.hochzeitMode === 'payout' ? 'Hochzeit: +3 / je −1' : 'Hochzeit ausspielen');
+  chips.push('Hochzeit: 1. Fehl-/Trumpfstich');
+  chips.push(`Re/Kontra bis zur ${r.announceUntil}. Karte`);
   const bock = [r.bockOnZero && '0-Punkte', r.bockOnHeartTrick && 'Herz durch', r.bockOnReKontra && 'Re+Kontra'].filter(Boolean);
   if (bock.length) chips.push(`Bock (${r.bockGames}): ${bock.join(', ')}`);
   $('#rule-chips').innerHTML = chips.map((c) => `<span class="chip">${esc(c)}</span>`).join('');
@@ -124,7 +132,13 @@ function startLocal(state = null) {
     table = makeLocalTable();
   }
   if (!state) save('doko.table', table.serialize());
-  else table.state.players[0].name = prefs.name || table.state.players[0].name;
+  else {
+    table.state.players[0].name = prefs.name || table.state.players[0].name;
+    if (table.state.rulesVersion !== RULES_VERSION) {
+      table.setRules(prefs.rules); // gilt ab dem nächsten Spiel
+      table.state.rulesVersion = RULES_VERSION;
+    }
+  }
   attach(new LocalConnection(table, 0, persistLocal));
 }
 
@@ -212,7 +226,12 @@ function renderTopbar(view) {
   if (g.contract) {
     title = g.contract.label;
     if (g.contract.soloist !== undefined) title += ` · ${nameOf(g.contract.soloist)}`;
-    if (g.contract.hochzeit !== undefined) title += ` · ${nameOf(g.contract.hochzeit)}`;
+    if (g.contract.hochzeit !== undefined) {
+      title += ` · ${nameOf(g.contract.hochzeit)}`;
+      if (!g.contract.clarified) title += g.contract.hochzeitMode === 'T' ? ' · 1. Trumpfstich' : ' · 1. Fehlstich';
+      else if (g.contract.partner === null) title += ' allein';
+      else title += ` & ${nameOf(g.contract.partner)}`;
+    }
   }
   const bock = t.multiplier > 1 ? `<span class="bock-badge">${t.multiplier === 2 ? 'BOCK' : `BOCK ×${t.multiplier}`}</span>` : '';
   $('#game-title').innerHTML = `${esc(title)} ${bock}`;
@@ -379,16 +398,14 @@ function renderCenter(view) {
   el.style.pointerEvents = 'none';
   if (g.phase === 'vorbehalt' && g.vorbehaltTurn === g.seat && g.options.length) {
     el.style.pointerEvents = 'auto';
-    const hasHochzeit = g.options.includes('hochzeit');
+    const hasHochzeit = g.options.includes('hochzeit-F');
     const solo = g.options.some((o) => o.startsWith('solo-'));
-    const hochHint = view.table.rules.hochzeitMode === 'payout'
-      ? `Hochzeit: Du bekommst ${view.table.rules.hochzeitBonus} Punkte, alle anderen −1, dann wird neu gegeben.`
-      : 'Hochzeit: Der erste fremde Stich (in den ersten 3) macht den Partner.';
+    const hochHint = 'Hochzeit: Wer in den ersten 3 Stichen den ersten Stich der angesagten Art macht, spielt mit dir. Sonst spielst du allein (Solo).';
     el.innerHTML = `<div class="panel" style="background:var(--panel-strong)">
       <div style="font-weight:700;margin-bottom:10px">Gesund oder Vorbehalt?</div>
       <div class="row wrap" style="justify-content:center">
         <button class="btn primary" data-decl="gesund">Gesund</button>
-        ${hasHochzeit ? '<button class="btn" data-decl="hochzeit">💍 Hochzeit</button>' : ''}
+        ${hasHochzeit ? '<button class="btn" data-decl="hochzeit-F">💍 Hochzeit · 1. Fehlstich</button><button class="btn" data-decl="hochzeit-T">💍 Hochzeit · 1. Trumpfstich</button>' : ''}
         ${solo ? '<button class="btn" data-act="solo-picker">Solo …</button>' : ''}
       </div>
       ${hasHochzeit ? `<div class="decl-hint">${esc(hochHint)}<br>„Gesund“ mit beiden Kreuz-Damen = stilles Solo.</div>` : ''}
@@ -417,7 +434,7 @@ function processEvents(view) {
         break;
       case 'contract':
         if (ev.contract === 'hochzeit') {
-          toast(`💍 ${nameOf(ev.seat)} hat eine Hochzeit!`, true);
+          toast(`💍 ${nameOf(ev.seat)} hat eine Hochzeit – ${ev.mode === 'T' ? 'erster Trumpfstich' : 'erster Fehlstich'}!`, true);
         } else if (ev.contract !== 'normal') {
           toast(`${nameOf(ev.seat)} spielt ${CONTRACTS[ev.contract].label}`, true);
         }
@@ -434,7 +451,7 @@ function processEvents(view) {
         toast(`💍 ${nameOf(ev.seat)} heiratet mit!`);
         break;
       case 'hochzeitSolo':
-        toast(`Kein Partner – ${nameOf(ev.seat)} spielt allein`);
+        toast(`Kein Partner in 3 Stichen – ${nameOf(ev.seat)} spielt allein`, true);
         break;
       default:
     }
@@ -617,9 +634,9 @@ function openSettings() {
       <div class="toggle"><span>Tempo der Mitspieler</span>${seg('speed', prefs.speed, Object.entries(SPEEDS).map(([k, v]) => [k, v.label]))}</div>
       <label class="toggle"><span>Karte mit einem Tipp spielen</span><input type="checkbox" data-pref="quickPlay" ${prefs.quickPlay ? 'checked' : ''}></label>
     </div>
-    <div class="section-title">Hochzeit</div>
+    <div class="section-title">Ansagen</div>
     <div class="settings-grid">
-      <div class="toggle"><span>Bei Hochzeit</span>${seg('hochzeitMode', r.hochzeitMode, [['payout', '+3/−1 & neu geben'], ['play', 'Ausspielen']])}</div>
+      <div class="toggle"><span>Re/Kontra bis zur … Karte</span>${seg('announceUntil', r.announceUntil, [[2, '2.'], [3, '3.'], [4, '4.'], [5, '5.']])}</div>
     </div>
     <div class="section-title">Regeln</div>
     <div class="settings-grid">${toggles}
@@ -645,7 +662,7 @@ function readSettingsForm() {
     if (!on) return;
     const name = seg.dataset.seg;
     if (name === 'speed') prefs.speed = on.dataset.val;
-    else if (name === 'bockGames') r.bockGames = Number(on.dataset.val);
+    else if (name === 'bockGames' || name === 'announceUntil') r[name] = Number(on.dataset.val);
     else r[name] = on.dataset.val;
   });
   body.querySelectorAll('[data-pref]').forEach((inp) => { prefs[inp.dataset.pref] = inp.checked; });

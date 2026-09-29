@@ -33,6 +33,7 @@ export class Table {
     } else {
       this.state = {
         version: 1,
+        rulesVersion: 2,
         rules: mergeRules(o.rules),
         players: o.players.map((p) => ({ name: p.name, kind: p.kind })),
         dealer: Math.floor(this.rng() * 4),
@@ -187,7 +188,7 @@ export class Table {
 export function gameLabel(g) {
   const c = g.contract;
   if (!c) return '–';
-  if (c.hochzeit !== undefined) return c.payout ? 'Hochzeit (ausgezahlt)' : 'Hochzeit';
+  if (c.hochzeit !== undefined) return c.partner !== undefined ? 'Hochzeit' : 'Hochzeit (allein)';
   if (c.silentSolo !== undefined) return 'Stilles Solo';
   return CONTRACTS[c.type].label;
 }

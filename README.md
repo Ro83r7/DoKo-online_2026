@@ -20,12 +20,13 @@ Der Spielstand wird im Browser gespeichert. „Weiterspielen“ bringt dich zur�
 | 2. Herz-10 schlägt die erste | Gilt immer. Abschaltbar |
 | Schweine | Hat ein Spieler beide Karo-Asse, sind sie die höchsten Trümpfe, noch über den Herz-10. Die Ansage kommt automatisch beim ersten Fuchs |
 | Karlchen | Gewinnt der Kreuz-Bube den letzten Stich, gibt es +1 für seine Partei |
-| Hochzeit | Wird angesagt: Der Hochzeiter bekommt **+3**, alle anderen **je −1**, dann wird neu gegeben. Klassisch ausspielen geht als Option |
+| Hochzeit | Wird angesagt, und zwar mit **„erster Fehlstich“** oder **„erster Trumpfstich“**. Wer innerhalb der ersten 3 Stiche den ersten Stich dieser Art macht, spielt mit dem Hochzeiter. Klappt das nicht, spielt der Hochzeiter allein: Er bekommt dann 3-fach, jeder Gegner 1-fach (wie beim Solo) |
+| Fuchs gefangen | Wird ein Karo-Ass vom Gegner gefangen: +1 |
+| Doppelkopf | Stich mit 40 oder mehr Augen: +1 |
+| Ansagen | **Re/Kontra geht, bis die eigene 5. Karte liegt.** Die Absagen haben jeweils eine Karte länger Zeit (wie im DKV-Regelwerk): keine 90 bis die 6., keine 60 bis die 7., keine 30 bis die 8., schwarz bis die 9. Karte liegt. Wer auf eine Ansage antwortet, hat eine Karte länger Zeit. Bei der Hochzeit zählen die Fristen ab dem Klärungsstich |
 | Bockrunden | So viele Bockspiele, wie Spieler am Tisch sind (4). Ausgelöst durch: **0-Punkte-Spiel**, **durchlaufendes Herz** (alle 4 bedienen Herz in einem Stich), **Re und Kontra** im selben Spiel. Mehrere Auslöser stapeln sich (Doppelbock ×4) |
 
-Außerdem gilt das Standard-Regelwerk (DKV): Re/Kontra bis zur 2. Karte (Erwiderung einen Stich länger),
-Absagen keine 90/60/30/schwarz, „gegen die Alten“ und ein Solo zählt dreifach.
-„Fuchs gefangen“ und „Doppelkopf“ (Stich mit 40+ Augen) sind vorhanden, aber standardmäßig **aus**.
+Außerdem gilt das Standard-Regelwerk (DKV): Absagen keine 90/60/30/schwarz, „gegen die Alten“, und ein Solo zählt dreifach.
 Alle Regeln lassen sich unter „Regeln & Optionen“ umschalten.
 
 ## Veröffentlichen mit GitHub Pages (einmalig, ca. 1 Minute)
