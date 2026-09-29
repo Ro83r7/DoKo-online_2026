@@ -1,0 +1,15 @@
+{
+  "name": "doko-online-2026",
+  "version": "1.0.0",
+  "description": "Doppelkopf im Browser – gegen Bots oder online mit Freunden",
+  "type": "module",
+  "private": true,
+  "scripts": {
+    "start": "node server/server.js",
+    "test": "node --test test/*.test.js"
+  },
+  "engines": { "node": ">=18" },
+  "dependencies": {
+    "ws": "^8.18.0"
+  }
+}
