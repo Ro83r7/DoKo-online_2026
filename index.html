@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
-  <meta name="theme-color" content="#0b3026">
+  <meta name="theme-color" content="#050b09">
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
@@ -22,27 +22,25 @@
   <!-- Startbildschirm -->
   <section id="home" class="screen active">
     <div class="home-card">
+      <div class="hero-cards" id="hero-cards" aria-hidden="true"></div>
       <div class="logo">
-        <div class="logo-cards"><div class="mini">♣</div><div class="mini">♥</div></div>
-        <div>
-          <h1>DoKo <span>2026</span></h1>
-          <p>Doppelkopf – mit unseren Hausregeln</p>
-        </div>
+        <h1>DoKo <span class="y">2026</span></h1>
+        <p>Doppelkopf mit unseren Hausregeln</p>
       </div>
       <div class="panel field">
         <label for="name-input">Dein Name</label>
         <input id="name-input" class="input" maxlength="16" autocomplete="nickname" placeholder="z. B. Robert">
       </div>
       <div class="home-actions">
-        <button id="btn-continue" class="btn primary block" hidden>Weiterspielen</button>
-        <button id="btn-new" class="btn block">Neue Runde gegen 3 Bots</button>
+        <button id="btn-continue" class="btn primary big block" hidden>Weiterspielen</button>
+        <button id="btn-new" class="btn big block">Neue Runde gegen 3 Bots</button>
         <div class="row">
           <button id="btn-online" class="btn">Online mit Freunden</button>
           <button id="btn-settings" class="btn">Regeln &amp; Optionen</button>
         </div>
       </div>
       <div class="panel">
-        <div class="section-title" style="margin-top:0">Unsere Regeln</div>
+        <div class="label" style="margin-bottom:10px">Unsere Regeln</div>
         <div class="rule-chips" id="rule-chips"></div>
       </div>
       <p class="home-foot">Tipp: Auf iPhone/iPad über „Teilen → Zum Home-Bildschirm“ als App installieren.</p>
@@ -56,7 +54,7 @@
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 7h16M4 12h16M4 17h16"/></svg>
       </button>
       <div class="info">
-        <div class="title" id="game-title">Doppelkopf</div>
+        <div class="title-pill"><div class="title" id="game-title">Doppelkopf</div><span id="game-bock"></span></div>
         <div class="sub" id="game-sub"></div>
       </div>
       <button class="icon-btn" id="btn-last" aria-label="Letzter Stich" title="Letzter Stich">
@@ -67,6 +65,7 @@
       </button>
     </div>
     <div class="table" id="table">
+      <div class="felt"></div>
       <div class="seat seat-left" id="seat-1"></div>
       <div class="seat seat-top" id="seat-2"></div>
       <div class="seat seat-right" id="seat-3"></div>

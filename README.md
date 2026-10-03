@@ -11,6 +11,12 @@ Der Spielstand wird im Browser gespeichert. „Weiterspielen“ bringt dich zur�
 
 **Als App auf iPhone/iPad:** Seite in Safari öffnen → Teilen → „Zum Home-Bildschirm“.
 
+## Design
+
+- **Eigene Spielkarten:** Alle 20 Kartenbilder sind als Vektorgrafik gezeichnet und deshalb auf jedem Display gestochen scharf. König, Dame und Bube sind gespiegelte Doppelfiguren mit Schwert, Blume und Hellebarde, Ass und Zehn haben klassische Bilder. Die Rückseite ist dunkelblau mit Gold.
+- **4-Farben-Blatt:** Unter „Regeln & Optionen“ lässt sich das Turnierbild einschalten (Pik grün, Karo orange).
+- **Tisch:** ovaler Filztisch mit Lederrand. Der Spieler am Zug bekommt einen animierten Goldring, Trümpfe in der Hand eine goldene Raute. Bei einem Sieg gibt es Konfetti, in der Punkteliste eine Krone für den Führenden.
+
 ## Unsere Hausregeln
 
 | Regel | Umsetzung |
@@ -70,6 +76,7 @@ js/engine/                   Spiel-Engine – läuft identisch im Browser und au
   bot.js                     KI der Mitspieler (sieht nur, was ein Mensch sehen würde)
   table.js                   Runde über viele Spiele: Geber, Punkte, Bock, Bots
 js/client/                   App, Netzwerk (lokal/online), Speicher
+  cardart.js                 Kartenbilder (SVG) und Rückseite
 server/server.js             Node-Server (statische Dateien + WebSocket-Räume)
 test/                        Tests (`npm test`) inkl. 3000 simulierten Spielen
 ```

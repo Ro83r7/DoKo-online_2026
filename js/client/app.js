@@ -1,10 +1,11 @@
 // Oberfläche: Startbildschirm, Spieltisch, Dialoge.
 import {
   Table, BOT_NAMES, mergeRules, DEFAULT_RULES, RULE_LABELS, CONTRACTS, DECLARATION_LABELS,
-  suitOf, rankOf, SUIT_SYMBOLS, RANK_SHORT, SUIT_NAMES, RANK_NAMES, trumpRank, annLabel, sortHand,
+  trumpRank, annLabel, sortHand,
 } from '../engine/index.js';
 import { LocalConnection, RemoteConnection, defaultServerUrl } from './net.js';
 import { load, save } from './store.js';
+import { cardUrl, backUrl, preloadCards, cardLabel } from './cardart.js';
 
 // ---------- Zustand ----------
 const SPEEDS = {
@@ -18,6 +19,7 @@ const prefs = Object.assign({
   name: '',
   speed: 'normal',
   quickPlay: hoverDevice,
+  fourColor: false,
   rules: { ...DEFAULT_RULES },
   serverUrl: defaultServerUrl(),
 }, load('doko.prefs', {}));
@@ -48,26 +50,23 @@ const S = {
 
 const $ = (sel) => document.querySelector(sel);
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
-const AVATAR_COLORS = ['#f5b841', '#5b9dff', '#3ddc97', '#ff8fa3'];
+const AVATARS = [['#f8d27a', '#e09a2c'], ['#8ab8ff', '#3f63e0'], ['#6ee7b7', '#10a674'], ['#ffb1c1', '#e5487a']];
+
+function avatarHTML(seat, name, cls = '') {
+  const [a, b] = AVATARS[seat % 4];
+  return `<div class="ava ${cls}" style="--a:${a};--b:${b}"><span>${esc((name || '?').slice(0, 1).toUpperCase())}</span></div>`;
+}
 
 function savePrefs() { save('doko.prefs', prefs); }
 
 // ---------- Karten-HTML ----------
 function cardHTML(id, { cls = '', ctx = null, attrs = '' } = {}) {
-  const s = suitOf(id);
-  const r = rankOf(id);
-  const red = s === 'H' || s === 'D';
-  const sym = SUIT_SYMBOLS[s];
-  const short = RANK_SHORT[r];
   const trump = ctx && trumpRank(id, ctx) >= 0 ? ' trump' : '';
-  const center = ['K', 'Q', 'J'].includes(r)
-    ? `<div class="face"><div class="fi"><b>${short}</b><small>${sym}</small></div></div>`
-    : `<div class="pip">${sym}</div>`;
-  return `<div class="card${red ? ' red' : ''}${trump} ${cls}" data-card="${id}" ${attrs} aria-label="${SUIT_NAMES[s]} ${RANK_NAMES[r]}">
-    <div class="corner"><span class="r">${short}</span><span class="s">${sym}</span></div>
-    ${center}
-    <div class="corner br"><span class="r">${short}</span><span class="s">${sym}</span></div>
-  </div>`;
+  return `<div class="card${trump} ${cls}" data-card="${id}" ${attrs}><img src="${cardUrl(id, prefs.fourColor)}" alt="${cardLabel(id)}" draggable="false"></div>`;
+}
+
+function applyCardBack() {
+  document.documentElement.style.setProperty('--card-back', `url("${backUrl()}")`);
 }
 
 // ---------- Screens ----------
@@ -76,6 +75,8 @@ function showScreen(id) {
 }
 
 function renderHome() {
+  const hero = ['CQ0', 'SQ0', 'H100', 'DA0', 'CJ0'];
+  $('#hero-cards').innerHTML = hero.map((id, i) => cardHTML(id, { attrs: `style="--i:${i - 2};--d:${Math.abs(i - 2) * 8}"` })).join('');
   $('#name-input').value = prefs.name;
   $('#btn-continue').hidden = !load('doko.table');
   const r = prefs.rules;
@@ -234,7 +235,8 @@ function renderTopbar(view) {
     }
   }
   const bock = t.multiplier > 1 ? `<span class="bock-badge">${t.multiplier === 2 ? 'BOCK' : `BOCK ×${t.multiplier}`}</span>` : '';
-  $('#game-title').innerHTML = `${esc(title)} ${bock}`;
+  $('#game-title').textContent = title;
+  $('#game-bock').innerHTML = bock;
   const round = Math.floor((t.gameNo - 1) / 4) + 1;
   const bockLeft = t.bock.length ? ` · noch ${t.bock.length} Bock` : '';
   const off = S.conn && S.conn.kind === 'online' ? (S.online ? ` · Raum ${S.conn.room}` : ' · ⚠︎ offline') : '';
@@ -266,18 +268,21 @@ function renderSeats(view) {
     const el = $(`#seat-${pos}`);
     const pl = view.table.players[seat];
     const turn = (g.phase === 'playing' && g.turn === seat) || (g.phase === 'vorbehalt' && g.vorbehaltTurn === seat);
-    const backs = '<i></i>'.repeat(g.handCounts[seat]);
+    const n = g.handCounts[seat];
+    const backs = Array.from({ length: n }, (_, i) => `<i style="--i:${(i - (n - 1) / 2).toFixed(1)}"></i>`).join('');
+    const total = view.table.totals[seat];
+    const party = g.parties[seat];
     const speech = el.querySelector('.speech');
     el.innerHTML = `
-      <div class="player-chip${turn ? ' turn' : ''}">
-        <div class="avatar" style="background:${AVATAR_COLORS[seat]}">${esc(pl.name.slice(0, 1).toUpperCase())}</div>
-        <div class="player-meta">
-          <div class="player-name">${esc(pl.name)}${pl.kind === 'bot' ? ' <span class="muted" title="Bot">·🤖</span>' : ''}</div>
-          <div class="player-sub"><span>${g.tricksWon[seat]} St.</span><span>${fmt(view.table.totals[seat])} P.</span></div>
+      <div class="pcard${turn ? ' turn' : ''}${party ? ` ${party}` : ''}">
+        ${avatarHTML(seat, pl.name)}
+        <div class="pinfo">
+          <div class="pname">${esc(pl.name)}${pl.kind === 'bot' ? '<span class="bot-dot" title="Computer"></span>' : ''}</div>
+          <div class="pmeta"><span>${g.tricksWon[seat]} ${g.tricksWon[seat] === 1 ? 'Stich' : 'Stiche'}</span><span class="pts ${total > 0 ? 'pos' : total < 0 ? 'neg' : ''}">${fmt(total)}</span></div>
         </div>
       </div>
       <div class="badges">${seatBadges(view, seat)}</div>
-      <div class="mini-hand">${backs}</div>`;
+      <div class="fan">${backs}</div>`;
     if (speech) el.appendChild(speech);
   }
 }
@@ -334,18 +339,24 @@ function renderActionbar(view) {
   const me = g.seat;
   const parts = [];
   const myParty = g.myParty;
+  const total = view.table.totals[me];
+  const myTurn = (g.phase === 'playing' && g.turn === me) || (g.phase === 'vorbehalt' && g.vorbehaltTurn === me);
+  parts.push(`<div class="me-chip${myParty && g.phase !== 'vorbehalt' ? ` ${myParty}` : ''}${myTurn ? ' turn' : ''}">
+    ${avatarHTML(me, nameOf(me), 'sm')}
+    <div class="pinfo"><div class="pname">${esc(nameOf(me))}</div>
+    <div class="pmeta"><span>${g.tricksWon[me]} ${g.tricksWon[me] === 1 ? 'Stich' : 'Stiche'}</span><span class="pts ${total > 0 ? 'pos' : total < 0 ? 'neg' : ''}">${fmt(total)}</span></div></div></div>`);
   if (myParty && g.phase !== 'vorbehalt') {
     const lvl = g.ann[myParty];
-    parts.push(`<span class="badge ${myParty}">${myParty === 're' ? 'Du: Re' : 'Du: Kontra'}${lvl ? ' · ' + esc(annLabel(myParty, lvl)) : ''}</span>`);
+    parts.push(`<span class="badge ${myParty}">${myParty === 're' ? 'Re' : 'Kontra'}${lvl ? ' · ' + esc(annLabel(myParty, lvl)) : ''}</span>`);
   }
   if (g.dealer === me) parts.push('<span class="badge dealer">Geber</span>');
   if (g.schweine === me) parts.push(`<span class="badge pig">🐷${g.schweineAnnounced ? ' Schweine' : ' Schweine (beim 1. Fuchs)'}</span>`);
   if (g.phase === 'playing') {
     const mine = g.turn === me;
-    parts.push(`<span class="status-text${mine ? ' me' : ''}">${mine ? (g.trick.cards.length ? 'Du bist dran' : 'Du spielst aus') : `${esc(nameOf(g.turn))} ist dran`} · ${g.tricksWon[me]} St.</span>`);
+    parts.push(`<span class="status-text${mine ? ' me' : ''}">${mine ? (g.trick.cards.length ? 'Du bist dran' : 'Du spielst aus') : `${esc(nameOf(g.turn))} ist dran`}</span>`);
     if (g.nextAnn) {
       const confirm = S.annConfirm === `${view.table.gameNo}:${g.nextAnn.level}`;
-      parts.push(`<button class="btn small ${myParty}${confirm ? ' confirm' : ''}" data-act="announce">${confirm ? `Sicher? ${esc(g.nextAnn.label)}!` : esc(g.nextAnn.label)}</button>`);
+      parts.push(`<button class="btn small ${myParty}${confirm ? ' confirm' : ''}" data-act="announce">${confirm ? `Sicher? ${esc(g.nextAnn.label)}!` : `📢 ${esc(g.nextAnn.label)}`}</button>`);
     }
   } else if (g.phase === 'vorbehalt') {
     parts.push(`<span class="status-text${g.vorbehaltTurn === me ? ' me' : ''}">${g.vorbehaltTurn === me ? 'Deine Ansage: gesund oder Vorbehalt?' : `Vorbehalt: ${esc(nameOf(g.vorbehaltTurn))} überlegt …`}</span>`);
@@ -401,12 +412,12 @@ function renderCenter(view) {
     const hasHochzeit = g.options.includes('hochzeit-F');
     const solo = g.options.some((o) => o.startsWith('solo-'));
     const hochHint = 'Hochzeit: Wer in den ersten 3 Stichen den ersten Stich der angesagten Art macht, spielt mit dir. Sonst spielst du allein (Solo).';
-    el.innerHTML = `<div class="panel" style="background:var(--panel-strong)">
-      <div style="font-weight:700;margin-bottom:10px">Gesund oder Vorbehalt?</div>
-      <div class="row wrap" style="justify-content:center">
-        <button class="btn primary" data-decl="gesund">Gesund</button>
-        ${hasHochzeit ? '<button class="btn" data-decl="hochzeit-F">💍 Hochzeit · 1. Fehlstich</button><button class="btn" data-decl="hochzeit-T">💍 Hochzeit · 1. Trumpfstich</button>' : ''}
-        ${solo ? '<button class="btn" data-act="solo-picker">Solo …</button>' : ''}
+    el.innerHTML = `<div class="panel decl-panel">
+      <div class="q">Gesund oder Vorbehalt?</div>
+      <div class="settings-grid">
+        <button class="btn primary big block" data-decl="gesund">Gesund</button>
+        ${hasHochzeit ? '<div class="row"><button class="btn block" data-decl="hochzeit-F">💍 Hochzeit<span class="sub">1. Fehlstich</span></button><button class="btn block" data-decl="hochzeit-T">💍 Hochzeit<span class="sub">1. Trumpfstich</span></button></div>' : ''}
+        ${solo ? '<button class="btn block" data-act="solo-picker">Solo ansagen …</button>' : ''}
       </div>
       ${hasHochzeit ? `<div class="decl-hint">${esc(hochHint)}<br>„Gesund“ mit beiden Kreuz-Damen = stilles Solo.</div>` : ''}
     </div>`;
@@ -505,7 +516,7 @@ function openSoloPicker() {
   };
   openModal('solo', `
     <div class="modal-head"><div><h2>Solo ansagen</h2><p class="lead">Du spielst allein gegen alle – Punkte zählen dreifach.</p></div>${closeBtn()}</div>
-    <div class="last-trick" style="flex-wrap:wrap;gap:4px">${sortHand(g.hand, g.ctx).map((c) => `<div class="col">${cardHTML(c)}</div>`).join('')}</div>
+    <div class="last-trick small" style="gap:4px">${sortHand(g.hand, g.ctx).map((c) => `<div class="col">${cardHTML(c)}</div>`).join('')}</div>
     <div class="decl-grid">
       ${solos.map((o) => `<button class="btn" data-decl="${o}"><div>${esc(DECLARATION_LABELS[o])}</div><div class="muted" style="font-size:11px;font-weight:500">${esc(hints[o])}</div></button>`).join('')}
     </div>`);
@@ -522,6 +533,24 @@ function maybeShowResult(view) {
   S.resultShownFor = key;
   clearTimeout(S.resultTimer);
   S.resultTimer = setTimeout(() => openResult(), g.result.kind === 'hochzeit' ? 900 : 1700);
+}
+
+function confetti() {
+  const box = document.createElement('div');
+  box.className = 'confetti';
+  const colors = ['#e9c46a', '#f6dc9a', '#4c8dff', '#ff5d73', '#34d399', '#ffffff'];
+  for (let i = 0; i < 70; i++) {
+    const c = document.createElement('i');
+    c.style.left = `${Math.random() * 100}%`;
+    c.style.background = colors[i % colors.length];
+    c.style.setProperty('--dx', `${(Math.random() - 0.5) * 160}px`);
+    c.style.setProperty('--r', `${(Math.random() - 0.5) * 1080}deg`);
+    c.style.animationDuration = `${1.8 + Math.random() * 1.6}s`;
+    c.style.animationDelay = `${Math.random() * 0.4}s`;
+    box.appendChild(c);
+  }
+  document.body.appendChild(box);
+  setTimeout(() => box.remove(), 4200);
 }
 
 function openResult() {
@@ -541,8 +570,10 @@ function openResult() {
     const winTxt = r.winner === 're' ? (r.solo ? `${nameOf(r.soloist)} gewinnt das Solo!` : 'Re gewinnt!')
       : r.winner === 'kontra' ? (r.solo ? 'Die Gegenspieler gewinnen!' : 'Kontra gewinnt!') : 'Keiner gewinnt';
     const iWon = r.perSeat[me] > 0;
-    hero = `<div class="big ${r.winner || ''}">${esc(winTxt)}</div>
-      <div class="muted">${esc(h.label)}${h.multiplier > 1 ? ` · Bock ×${h.multiplier}` : ''}${r.perSeat[me] !== 0 ? (iWon ? ' · 🎉 Glückwunsch!' : '') : ''}</div>`;
+    hero = `<div class="kicker">Spiel ${h.nr} · ${esc(h.label)}${h.multiplier > 1 ? ` · Bock ×${h.multiplier}` : ''}</div>
+      <div class="big ${r.winner || ''}">${esc(winTxt)}</div>
+      <div class="muted">${iWon ? '🎉 Glückwunsch – du gewinnst!' : r.perSeat[me] < 0 ? 'Diesmal nicht – nächstes Spiel!' : ''}</div>`;
+    if (iWon && S.confettiFor !== h.nr) { S.confettiFor = h.nr; confetti(); }
     const reNames = r.reSeats.map(nameOf).join(' & ');
     const koNames = r.kontraSeats.map(nameOf).join(' & ');
     const rePct = Math.max(8, Math.min(92, (r.reEyes / 240) * 100));
@@ -557,7 +588,7 @@ function openResult() {
       </ul>`;
   }
   const scores = [0, 1, 2, 3].map((s) => `
-    <div class="score-cell"><div class="n">${esc(nameOf(s))}${s === me ? ' (Du)' : ''}</div>
+    <div class="score-cell${s === me ? ' me' : ''}"><div class="n">${esc(nameOf(s))}${s === me ? ' (Du)' : ''}</div>
       <div class="d ${h.perSeat[s] > 0 ? 'pos' : h.perSeat[s] < 0 ? 'neg' : ''}">${fmt(h.perSeat[s])}</div>
       <div class="t">Σ ${fmt(t.totals[s])}</div></div>`).join('');
   const bockNote = h.triggers.length
@@ -579,7 +610,8 @@ function openResult() {
 function openScores() {
   const t = S.view ? S.view.table : null;
   if (!t) return;
-  const names = t.players.map((p) => esc(p.name));
+  const best = Math.max(...t.totals);
+  const names = t.players.map((p, i) => `${t.history.length && t.totals[i] === best ? '<span class="lead-crown">👑 </span>' : ''}${esc(p.name)}`);
   const rows = t.history.slice().reverse().map((h) => `
     <tr class="${h.multiplier > 1 ? 'bock' : ''}">
       <td>${h.nr}</td>
@@ -633,6 +665,7 @@ function openSettings() {
     <div class="settings-grid">
       <div class="toggle"><span>Tempo der Mitspieler</span>${seg('speed', prefs.speed, Object.entries(SPEEDS).map(([k, v]) => [k, v.label]))}</div>
       <label class="toggle"><span>Karte mit einem Tipp spielen</span><input type="checkbox" data-pref="quickPlay" ${prefs.quickPlay ? 'checked' : ''}></label>
+      <label class="toggle"><span>4-Farben-Blatt (Turnierbild)<span class="preview-cards" id="deck-preview"></span></span><input type="checkbox" data-pref="fourColor" ${prefs.fourColor ? 'checked' : ''}></label>
     </div>
     <div class="section-title">Ansagen</div>
     <div class="settings-grid">
@@ -651,6 +684,13 @@ function openSettings() {
       <button class="btn" data-act="reset-rules">Standard</button>
       <button class="btn primary" data-act="save-settings">Speichern</button>
     </div>`);
+  renderDeckPreview(prefs.fourColor);
+}
+
+function renderDeckPreview(four) {
+  const el = $('#deck-preview');
+  if (!el) return;
+  el.innerHTML = ['CA0', 'SA0', 'HA0', 'DA0'].map((id) => `<div class="card"><img src="${cardUrl(id, four)}" alt="" draggable="false"></div>`).join('');
 }
 
 function readSettingsForm() {
@@ -670,6 +710,8 @@ function readSettingsForm() {
   if (url) prefs.serverUrl = url.value.trim();
   prefs.rules = mergeRules(r);
   savePrefs();
+  preloadCards(prefs.fourColor);
+  if (S.view && S.view.game) onView(S.view);
   if (S.conn && S.conn.kind === 'local') {
     const sp = SPEEDS[prefs.speed];
     S.conn.table.botDelay = sp.botDelay;
@@ -733,7 +775,7 @@ function renderLobby(lobby) {
   if (!conn) return;
   const seats = lobby.seats.map((s, i) => `
     <div class="seat-row">
-      <div class="avatar" style="background:${AVATAR_COLORS[i]}">${s.name ? esc(s.name[0].toUpperCase()) : '?'}</div>
+      ${avatarHTML(i, s.name || '?', 'sm')}
       <div class="grow"><b>${s.name ? esc(s.name) : '<span class="muted">frei – wird Bot</span>'}</b>${i === conn.seat ? ' <span class="muted">(Du)</span>' : ''}${i === lobby.host ? ' <span class="badge info">Host</span>' : ''}</div>
       ${s.name && !s.online ? '<span class="badge off">offline</span>' : ''}
     </div>`).join('');
@@ -858,6 +900,9 @@ $('#btn-menu').addEventListener('click', openMenu);
 $('#btn-score').addEventListener('click', openScores);
 $('#btn-last').addEventListener('click', openLastTrick);
 $('#name-input').addEventListener('change', playerName);
+document.addEventListener('change', (e) => {
+  if (e.target.matches && e.target.matches('[data-pref="fourColor"]')) renderDeckPreview(e.target.checked);
+});
 document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && S.modal && S.modal !== 'lobby') closeModal(); });
 
 let resizeTimer = null;
@@ -867,6 +912,8 @@ window.addEventListener('resize', () => {
 });
 
 // ---------- Start ----------
+applyCardBack();
+preloadCards(prefs.fourColor);
 renderHome();
 const params = new URLSearchParams(location.search);
 if (params.get('server')) { prefs.serverUrl = params.get('server'); savePrefs(); }

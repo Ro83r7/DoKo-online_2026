@@ -1,5 +1,5 @@
 // Service Worker: Netzwerk zuerst, Cache als Fallback (offline spielbar, Updates sofort sichtbar).
-const CACHE = 'doko-2026-v1';
+const CACHE = 'doko-2026-v2';
 self.addEventListener('install', (e) => { self.skipWaiting(); });
 self.addEventListener('activate', (e) => { e.waitUntil(self.clients.claim()); });
 self.addEventListener('fetch', (e) => {
